@@ -8,7 +8,6 @@ from time import time
 from sklearn.neural_network import MLPClassifier
 from sklearn.svm import SVC
 
-
 from skimage.feature import hog
 from skimage.io import imread
 
@@ -22,7 +21,8 @@ trainData = {'classes': [],
 testData = {'classes': [],
             'img_hog': [],
             'img_hog_d': []}
-evalData = {'classes': [],
+evalData = {'testNames': [],
+            'classes': [],
             'img_hog': [],
             'img_hog_d': []}
 
@@ -31,8 +31,7 @@ images = {}
 
 
 def loadTrainDirImages(dir, trainDir):
-    os.chdir(dir)
-    
+    os.chdir(dir)    
     subdirectories = os.listdir(dir)
 
     for subdir in subdirectories:
@@ -43,7 +42,6 @@ def loadTrainDirImages(dir, trainDir):
 
         for file in glob.glob("*.png"):
             filePath = completePath + '/' + file
-            print(filePath)
             images[file] = imread(filePath, as_gray=True)
             if(trainDir):
 
@@ -75,9 +73,10 @@ def loadEvalDirImages(dir):
 
     for file in glob.glob("*.png"):
         filePath = dir + '/' + file
-        print(filePath)
 
         images[file] = imread(filePath, as_gray=True)
+        evalData['testNames'].append(os.path.basename(filePath)[:-4])
+
         evalData['classes'] = None
 
         fd, img = hog(images[file],
@@ -90,23 +89,26 @@ def loadEvalDirImages(dir):
         evalData['img_hog_d'].append(fd)
     
 
-def trainModel():
+def trainModel(eval):
     X_trainArr = trainData['img_hog_d']
     y_trainArr = trainData['classes']
 
-    X_testDataArr = testData['img_hog_d']
-    y_testDataArr = testData['classes']
+    if(eval):
+        X_testDataArr = evalData['img_hog_d']
+        y_testDataArr = evalData['classes']
+    else:
+        X_testDataArr = testData['img_hog_d']
+        y_testDataArr = testData['classes']
 
     start_time = time()
     classifier.fit(X_trainArr, y_trainArr)
-    print('\n\tTraining time:', time() - start_time)
+    print('\nTraining time:', time() - start_time)
 
-    print('\tScore:', classifier.score(X_testDataArr, y_testDataArr))
+    if not eval:
+        print('Score:', classifier.score(X_testDataArr, y_testDataArr))
 
 
 if __name__ == "__main__":
-
-    print(sys.argv)
 
     training = False
 
@@ -123,11 +125,27 @@ if __name__ == "__main__":
     if(training):
         loadTrainDirImages(trainDirectory, True)
         loadTrainDirImages(devDirectory, False)
-        trainModel()
+        trainModel(False)
     else:
+        loadTrainDirImages(trainDirectory, True)
+        loadTrainDirImages(devDirectory, True)
         loadEvalDirImages(evalDirectory)
+        
 
-    X_evalDataArr = evalData['img_hog_d']
-    Y_evalDataArr = evalData['classes'] 
+
+        X_evalDataArr = evalData['img_hog_d']
+        Y_evalDataArr = evalData['classes'] 
+
+        trainModel(True)
+
+        os.chdir(currDirectory)
+
+        start_time = time()
+        pred_proba = classifier.predict_proba(X_evalDataArr)
+        print('Time of prediction:', time() - start_time)
+        with open('image_SVC.out', 'w') as outFile:
+            for name, proba in zip(evalData['testNames'], pred_proba):
+                print(name, 1 + np.argmax(proba), ' '.join([str(x * 100) for x in proba.tolist()]), file=outFile)
+
 
     
